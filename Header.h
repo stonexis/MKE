@@ -1,6 +1,9 @@
 #pragma once
 #include <iostream>
+#include <fstream>
 #include <vector>
+#include <iomanip>
+#include <string>
 
 using namespace std;
 
@@ -39,7 +42,7 @@ inline void hostDcopy(int N, vector<double>& h_a, vector<double>& h_b)
 }
 
 // cublasDdot(cublasHandle, N, d_r, 1, d_r, 1, &r1);
-inline void hostDdot(int N, vector<double>& h_a, vector<double>& h_b, double& result) //??
+inline void hostDdot(int N, vector<double>& h_a, vector<double>& h_b, double& result)
 {
     result = 0.0;
     for (int i = 0; i < N; i++)
@@ -261,37 +264,42 @@ void printSCR(int M, int N, int nz, vector<double> val, vector<int>I, vector<int
     printf("\n\n");
 }
 
-void resultPrint(int nsize, int ndim, vector<double> node, vector<double> result)
-{
-    printf("\n\n%-7s", "i");
-    for (int i = 0; i < ndim; i++)
-    {
-        printf("x%-9i", i);
+void resultPrintFile(int nsize, int ndim, const std::vector<double>& node, const std::vector<double>& result) {
+    std::ofstream outfile("output.txt");
+    if (!outfile.is_open()) {
+        throw std::runtime_error("Failed to open file output.txt for writing");
     }
-    for (int i = 0; i < ndim; i++)
-    {
-        printf("u%-14i", i);
+    outfile << "\n\n";
+    outfile << std::left << std::setw(7) << "i";
+    for (int i = 0; i < ndim; i++) {
+        outfile << "x" << std::left << std::setw(9) << i;
     }
-    printf("\n");
-    for (int p = 0; p < nsize; p++)
-    {
-        printf("%-7d", p);
-        for (int i = 0; i < ndim; i++)
-        {
-            if (node[ndim * p + i] < 0.0)
-                printf("%-10.3lf", node[ndim * p + i]);
-            else
-                printf(" %-09.3lf", node[ndim * p + i]);
-        }
-        for (int i = 0; i < ndim; i++)
-        {
+    for (int i = 0; i < ndim; i++) {
+        outfile << "u" << std::left << std::setw(14) << i;
+    }
+    outfile << "\n";
 
-            if (result[ndim * p + i] < 0.0)
-                printf("%-15.3e", result[ndim * p + i]);
+    for (int p = 0; p < nsize; p++) {
+        outfile << std::left << std::setw(7) << p;
+
+        for (int i = 0; i < ndim; i++) {
+            double value = node[ndim * p + i];
+            if (value < 0.0)
+                outfile << std::left << std::setw(10) << std::fixed << std::setprecision(3) << value;
             else
-                printf(" %-14.3e", result[ndim * p + i]);
+                outfile << " " << std::setw(9) << std::fixed << std::setprecision(3) << value;
         }
-        printf("\n");
+
+        for (int i = 0; i < ndim; i++) {
+            double value = result[ndim * p + i];
+            if (value < 0.0)
+                outfile << std::left << std::setw(15) << std::scientific << std::setprecision(3) << value;
+            else
+                outfile << " " << std::setw(14) << std::scientific << std::setprecision(3) << value;
+        }
+
+        outfile << "\n";
     }
-    printf("\n\n");
+    outfile << "\n\n";
+    outfile.close();
 }
