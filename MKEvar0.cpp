@@ -20,12 +20,17 @@ const double b = 1.0;
 const int edim = 3;     // Количество узлов на элемент
 const int ndim = 2;     // Степень свободы
 
+vector<int> node_down_index;
+vector<int> node_left_index;
 vector<double> node;
 vector<int> elem;
+vector<int> elements_on_down;
+vector<int> elements_on_left;
 vector<double> bound;
 vector<double> load;
 vector<double> elastic = { 20.6, 0.3 }; // [MN/cm^2], [1]
 double thickness = 1.0;
+
 void loadNodes(const std::string& filename) {
     std::ifstream file(filename);
     if (!file.is_open()) {
@@ -33,6 +38,7 @@ void loadNodes(const std::string& filename) {
     }
 
     std::string line;
+    int count_nodes = 0;
     while (std::getline(file, line)) {
         line.erase(std::remove(line.begin(), line.end(), ','), line.end());
         std::istringstream line_stream(line);
@@ -40,6 +46,11 @@ void loadNodes(const std::string& filename) {
         line_stream >> value0 >> value1;
         node.push_back(value0);
         node.push_back(value1);
+        if (value1 == 0)
+            node_down_index.push_back(count_nodes);
+        if (value0 == 0)
+            node_left_index.push_back(count_nodes);
+        count_nodes++;
     }
 }
 
@@ -50,14 +61,31 @@ void loadElements(const std::string& filename) {
     }
 
     std::string line;
+    int count_elements = 0;
     while (std::getline(file, line)) {
         line.erase(std::remove(line.begin(), line.end(), ','), line.end());
         std::istringstream line_stream(line);
         double node0, node1, node2;
         line_stream >> node0 >> node1 >> node2;
+
+        bool found_down_0 = std::binary_search(node_down_index.begin(), node_down_index.end(), node0);
+        bool found_down_1 = std::binary_search(node_down_index.begin(), node_down_index.end(), node1);
+        bool found_down_2 = std::binary_search(node_down_index.begin(), node_down_index.end(), node2);
+
+        if (found_down_0 == true || found_down_1 == true || found_down_2 == true)
+            elements_on_down.push_back(count_elements);
+
+        bool found_left_0 = std::binary_search(node_left_index.begin(), node_left_index.end(), node0);
+        bool found_left_1 = std::binary_search(node_left_index.begin(), node_left_index.end(), node1);
+        bool found_left_2 = std::binary_search(node_left_index.begin(), node_left_index.end(), node2);
+
+        if (found_left_0 == true || found_left_1 == true || found_left_2 == true)
+            elements_on_left.push_back(count_elements);
+
         elem.push_back(node0);
         elem.push_back(node1);
         elem.push_back(node2);
+        count_elements++;
     }
 }
 
@@ -68,7 +96,6 @@ void setBoundaryConditions() {
 
     int numRightNodes = 0;
 
-    // Подсчёт количества узлов на правой границе (где x == b)
     for (int i = 0; i < nsize; ++i) {
         double x = node[i * ndim];
         if (x == b) {
@@ -76,21 +103,16 @@ void setBoundaryConditions() {
         }
     }
 
-    // Расчёт распределённой нагрузки на узел на правой стороне
     double loadPerNode = P / numRightNodes;
-
-    // Применение граничных условий
     for (int i = 0; i < nsize; ++i) {
         double x = node[i * ndim];
         double y = node[i * ndim + 1];
 
-        // Кинематические граничные условия
-        if (x == 0.0) bound[i * ndim] = 0.0;     // Закреплено по x на левой стороне
-        if (y == 0.0) bound[i * ndim + 1] = 0.0; // Закреплено по y на нижней стороне
+        if (x == 0.0) bound[i * ndim] = 0.0;
+        if (y == 0.0) bound[i * ndim + 1] = 0.0;
 
-        // Статические граничные условия
         if (x == b) {
-            load[i * ndim] = loadPerNode;  // Пропорциональная нагрузка на узел по x
+            load[i * ndim] = loadPerNode; 
         }
     }
 }
@@ -204,11 +226,6 @@ void applyKinematic(int N, vector<double> u, vector<double>& f, vector<double>& 
         }
 
     }
-
-
-
-
-
     printf("\nKinematic boundary condition is applyed\n\n");
 }
 
@@ -269,57 +286,109 @@ void transformMatrixToCsr(int M, int N, int& nz, vector<double>& stiffness, vect
     }
 }
 
-void transformMatrixTest()
-{
-    const int M = 4;
-    const int N = 5;
-
-    vector<double> stiffness = {
-      1.0, 4.0, 0.0, 0.0, 0.0,
-      0.0, 2.0, 3.0, 0.0, 0.0,
-      5.0, 0.0, 0.0, 7.0, 8.0,
-      0.0, 0.0, 9.0, 0.0, 6.0,
-    };
-
-    vector<double> val;
-    vector<int> I;
-    vector<int> J;
-    int nz;
-    transformMatrixToCsr(M, N, nz, stiffness, val, I, J);
-    printSCR(M, N, nz, val, I, J);
-}
-
-void calculateStresses(int esize, vector<double>& result, vector<int>& elem, vector<double>& stresses) {
-    const double E = elastic[0]; // Modulus of elasticity
-    const double nu = elastic[1]; // Poisson's ratio
-    const double G = E / (2 * (1 + nu)); // Shear modulus
-
-    stresses.resize(esize * 3); // Allocate space for stress components
-
+void calculateStrains(int esize, const vector<double>& displacements, const vector<int>& elem, vector<long double>& strains) {
     for (int ie = 0; ie < esize; ie++) {
-        vector<int> P{ 0, 0, 0 };
-        for (int p = 0; p < 3; p++) {
-            P[p] = elem[ie * edim + p];
-        }
+        
+        vector<int> nodes = { elem[ie * edim], elem[ie * edim + 1], elem[ie * edim + 2] };
 
-        // Calculate gradients (dN/dx and dN/dy) for strain calculation
-        vector<double> a(3), b(3), c(3);
-        gradientA(P, a);
-        gradientB(P, b);
-        gradientC(P, c);
+        vector<double> b(3), c(3), area(3);
+        gradientB(nodes, b);
+        gradientC(nodes, c);
+        gradientA(nodes, area);
 
-        // Calculate strain components
-        double epsilon_x = a[0] * result[P[0] * ndim] + a[1] * result[P[1] * ndim] + a[2] * result[P[2] * ndim];
-        double epsilon_y = b[0] * result[P[0] * ndim + 1] + b[1] * result[P[1] * ndim + 1] + b[2] * result[P[2] * ndim + 1];
-        double gamma_xy = c[0] * result[P[0] * ndim] + c[1] * result[P[1] * ndim] + c[2] * result[P[2] * ndim]; // Shear strain
+        double totalArea = abs(area[0] + area[1] + area[2]) / 2.0;
 
-        // Calculate stress components using the plane stress equations
-        stresses[ie * 3] = (E / (1 - nu * nu)) * (epsilon_x + nu * epsilon_y); // sigma_x
-        stresses[ie * 3 + 1] = (E / (1 - nu * nu)) * (nu * epsilon_x + epsilon_y); // sigma_y
-        stresses[ie * 3 + 2] = G * gamma_xy; // sigma_xy
+        long double exx = (b[0] * displacements[nodes[0] * ndim] + b[1] * displacements[nodes[1] * ndim] + b[2] * displacements[nodes[2] * ndim]) / (2 * totalArea);
+        long double eyy = (c[0] * displacements[nodes[0] * ndim + 1] + c[1] * displacements[nodes[1] * ndim + 1] + c[2] * displacements[nodes[2] * ndim + 1]) / (2 * totalArea);
+        long double exy = ((b[0] * displacements[nodes[0] * ndim + 1] + b[1] * displacements[nodes[1] * ndim + 1] + b[2] * displacements[nodes[2] * ndim + 1]) +
+            (c[0] * displacements[nodes[0] * ndim] + c[1] * displacements[nodes[1] * ndim] + c[2] * displacements[nodes[2] * ndim])) / (4 * totalArea);
+
+        strains.push_back(exx);
+        strains.push_back(eyy);
+        strains.push_back(exy);
     }
 }
 
+void calculateStresses(int esize, const vector<long double>& strains, vector<long double>& stresses) {
+
+    double E = elastic[0];
+    double nu = elastic[1];
+    double factor = E / ((1 + nu) * (1 - 2 * nu));
+
+    for (int i = 0; i < esize; i++) {
+        
+        long double exx = strains[i * 3];
+        long double eyy = strains[i * 3 + 1];
+        long double exy = strains[i * 3 + 2];
+
+        long double sxx = factor * ((1 - nu) * exx + nu * eyy);
+        long double syy = factor * (nu * exx + (1 - nu) * eyy);
+        long double sxy = factor * (1 - 2 * nu) / 2.0 * exy;
+
+        stresses.push_back(sxx);
+        stresses.push_back(syy);
+        stresses.push_back(sxy);
+    }
+}
+
+void StressesDownPrintFile(const std::vector<long double>& stresses) {
+    std::ofstream outfile("output_down.txt");
+    for (const auto& element : elements_on_down) {
+        
+        int stress_index = element * edim;
+        if (stress_index >= stresses.size()) {
+            continue;
+        }
+
+        int element_index = element * edim;
+        if (element_index >= elem.size()) {
+            continue;
+        }
+
+        for (int i = 0; i < edim; ++i) {
+            int node_index = elem[element_index + i];
+            if (std::find(node_down_index.begin(), node_down_index.end(), node_index) != node_down_index.end()) {
+                
+                long double x = node[node_index * 2];
+
+                outfile << std::scientific << std::setprecision(3)
+                    << x << " " << stresses[stress_index] << '\n';
+            }
+        }
+    }
+
+    outfile.close();
+}
+
+void StressesLeftPrintFile(const std::vector<long double>& stresses) {
+    std::ofstream outfile("output_left.txt");
+
+    for (const auto& element : elements_on_left) {
+        
+        int stress_index = element * edim;
+        if (stress_index >= stresses.size()) {
+            continue; 
+        }
+
+        int element_index = element * edim;
+        if (element_index >= elem.size()) {
+            continue;
+        }
+
+        for (int i = 0; i < edim; ++i) {
+            int node_index = elem[element_index + i];
+            
+            if (node[node_index * 2] == 0) {
+                long double y = node[node_index * 2 + 1];
+
+                outfile << std::scientific << std::setprecision(3)
+                    << y << " " << stresses[stress_index] << '\n';
+            }
+        }
+    }
+
+    outfile.close();
+}
 
 int main(int argc, char** argv)
 {
@@ -337,8 +406,6 @@ int main(int argc, char** argv)
         globalStiffness[i] = 0;
     }
 
-    //printStiffness(N, globalStiffness);
-
     vector<double> a{ 0,0,0 }, b{ 0,0,0 }, c{ 0,0,0 };
     vector<int> P{ 0,0,0 }, Q{ 0,0,0 };
     vector<double> block(ndim * ndim);
@@ -346,17 +413,11 @@ int main(int argc, char** argv)
     for (int ie = 0; ie < esize; ie++)
     {
         P[0] = elem[ie * edim + 0];
-
         P[1] = elem[ie * edim + 1];
-
         P[2] = elem[ie * edim + 2];
-
         Q[0] = P[0];
-
         Q[1] = P[1];
-
         Q[2] = P[2];
-
 
         double det = 0;
         gradientA(P, a);
@@ -364,37 +425,26 @@ int main(int argc, char** argv)
         gradientC(P, c);
         getDet(a, det);
 
-        printABCDet(ie, edim, det, a, b, c);
-
-        //vector<double> elemStiffness[ndim * edim * ndim * edim];
-
         for (int p = 0; p < edim; p++)
         {
 
             for (int q = 0; q < edim; q++)
             {
-                blockStressStiffnessPE(det, b[p], b[q], c[p], c[q], block);
-
-                printf("\nPQ[%d%d] pq[%d%d]\n", P[p], Q[q], p, q);
-                printStiffness(ndim, block);
-
+                blockStressStiffnessPE(det, b[p], b[q], c[p], c[q], block);             
                 for (int i = 0; i < ndim; i++)
                 {
                     for (int j = 0; j < ndim; j++)
-                    {
-                        //elemStiffness[(p * ndim + i) * edim * ndim + (q * ndim + j)] = block[i * ndim + j]; 
-                        globalStiffness[(P[p] * ndim + i) * N + (Q[q] * ndim + j)] += block[i * ndim + j];
+                    {                       
+                       globalStiffness[(P[p] * ndim + i) * N + (Q[q] * ndim + j)] += block[i * ndim + j];
                     }
                 }
 
             }
         }
 
-        //printStiffness(ndim * edim, elemStiffness);
+        
     }
-
     int status = sumStiffnessTest(N, globalStiffness, load);
-
     if (status != 0)
     {
         printf("\nSum stiffness error\n");
@@ -405,12 +455,8 @@ int main(int argc, char** argv)
         printf("\nSum stiffness ok\n");
     }
 
-    printStiffnessF(N, globalStiffness, load);
     applyKinematic(N, bound, load, globalStiffness);
-    printStiffnessF(N, globalStiffness, load);
-
-    transformMatrixTest();
-
+    
     vector<double> val;
     vector<int> I;
     vector<int> J;
@@ -419,22 +465,26 @@ int main(int argc, char** argv)
     transformMatrixToCsr(N, N, nz, globalStiffness, val, I, J);
     printSCR(N, N, nz, val, I, J);
 
-    vector<double> result(N);
+    vector<double> displacement(N);
     for (int i = 0; i < N; i++)
     {
-        result[i] = 0.0;
+        displacement[i] = 0.0;
     }
 
     status = cgTest();
 
-    status = cg_host(N, nz, I, J, val, load, result, 1);
-    resultPrintFile(nsize, ndim, node, result);
-    vector<double> stresses;
-    calculateStresses(esize, result, elem, stresses);
-    std::ofstream outfile("output2.txt");
-    for (int ie = 0; ie < esize; ie++) {
-        outfile << ie << " " << stresses[ie * 3] << " " << stresses[ie * 3 + 1] << " " << stresses[ie * 3 + 2] << '\n';
-    }
+    status = cg_host(N, nz, I, J, val, load, displacement, 1);
+    resultPrintFile(nsize, ndim, node, displacement);
+
+    vector<long double> strains;
+    calculateStrains(esize, displacement, elem, strains);
+
+    vector<long double> stresses;
+    calculateStresses(esize, strains, stresses);
+
+    StressesDownPrintFile(stresses);
+    StressesLeftPrintFile(stresses);
+
     std::cin.get();
     int exit(status);
 }

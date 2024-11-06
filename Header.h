@@ -264,10 +264,10 @@ void printSCR(int M, int N, int nz, vector<double> val, vector<int>I, vector<int
     printf("\n\n");
 }
 
-void resultPrintFile(int nsize, int ndim, const std::vector<double>& node, const std::vector<double>& result) {
-    std::ofstream outfile("output.txt");
+void resultPrintFile(int nsize, int ndim, const std::vector<double>& node, const std::vector<double>& displacement) {
+    std::ofstream outfile("output_displacements.txt");
     if (!outfile.is_open()) {
-        throw std::runtime_error("Failed to open file output.txt for writing");
+        throw std::runtime_error("Failed to open file output_displacements.txt");
     }
     outfile << "\n\n";
     outfile << std::left << std::setw(7) << "i";
@@ -291,7 +291,7 @@ void resultPrintFile(int nsize, int ndim, const std::vector<double>& node, const
         }
 
         for (int i = 0; i < ndim; i++) {
-            double value = result[ndim * p + i];
+            double value = displacement[ndim * p + i];
             if (value < 0.0)
                 outfile << std::left << std::setw(15) << std::scientific << std::setprecision(3) << value;
             else
