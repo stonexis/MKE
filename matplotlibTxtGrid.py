@@ -2,33 +2,24 @@ import numpy as np
 from scipy.spatial import Delaunay
 import matplotlib.pyplot as plt
 
-# Чтение узлов из файла
 nodes = []
 with open('nodes.txt', 'r') as file:
     for line in file:
         x, y = map(float, line.strip().split(','))
         nodes.append([x, y])
 
-# Преобразуем узлы в numpy-массив
 nodes = np.array(nodes)
 
-# Выполняем триангуляцию
 tri = Delaunay(nodes)
+min_angle = 20
+max_angle = 120
 
-# Устанавливаем пороги для фильтрации
-min_angle = 20  # Минимальный угол в градусах
-max_angle = 120  # Максимальный угол в градусах
-
-
-# Функция для вычисления углов треугольника
 def calculate_angles(triangle):
     p1, p2, p3 = nodes[triangle]
-    # Векторы сторон треугольника
     a = p2 - p1
     b = p3 - p2
     c = p1 - p3
 
-    # Длины сторон
     len_a = np.linalg.norm(a)
     len_b = np.linalg.norm(b)
     len_c = np.linalg.norm(c)
@@ -45,7 +36,6 @@ for triangle in tri.simplices:
     if all(min_angle <= angle <= max_angle for angle in angles):
         filtered_triangles_by_angle.append(triangle)
 
-# Визуализация результатов
 plt.figure(figsize=(12, 6))
 
 
@@ -57,7 +47,6 @@ plt.grid(False)
 
 plt.show()
 
-# Сохранение отфильтрованных треугольников в файлы
 with open('elements.txt', 'w') as file:
     for triangle in filtered_triangles_by_angle:
         file.write(f"{triangle[0]}, {triangle[1]}, {triangle[2]}\n")
