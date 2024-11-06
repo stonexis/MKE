@@ -4,13 +4,9 @@ import numpy as np
 
 
 def plot_displacements_x(numerical_file_path):
-    # Чтение данных из файла с пробелами в качестве разделителя
     data = pd.read_csv(numerical_file_path, delim_whitespace=True)
-
-    # Фильтруем строки, где вторая координата x1 равна 0
     data_filtered = data[data["x1"] == 0]
 
-    # Сортируем отфильтрованные данные по координате x0 и убираем повторяющиеся значения
     data_filtered = data_filtered.drop_duplicates(subset="x0")
     sorted_by_x0 = data_filtered.sort_values(by="x0").reset_index(drop=True)
 
@@ -22,7 +18,6 @@ def plot_displacements_x(numerical_file_path):
     x0 = sorted_by_x0['x0'].tolist()
     u0 = sorted_by_x0['u0'].tolist()
 
-    # Вычисление аналитического решения для перемещений
     u0analit = []
     for x in x0:
         u0analit.append(
@@ -31,8 +26,6 @@ def plot_displacements_x(numerical_file_path):
                     (x + (4 * a ** 2) / ((1 + nu) * x) - (a ** 4) / (x ** 3))
             )
         )
-
-    # Построение графика
     plt.figure(figsize=(10, 6))
     plt.minorticks_on()
     plt.grid(which='major')
@@ -48,12 +41,11 @@ def plot_displacements_x(numerical_file_path):
 
 
 def plot_displacements_y(numerical_file_path):
-    # Чтение данных из файла с пробелами в качестве разделителя
+   
     data = pd.read_csv(numerical_file_path, delim_whitespace=True)
 
     data_filtered = data[data["x0"] == 0]
 
-    # Сортируем отфильтрованные данные по координате x0 и убираем повторяющиеся значения
     data_filtered = data_filtered.drop_duplicates(subset="x1")
     sorted_by_x1 = data_filtered.sort_values(by="x1").reset_index(drop=True)
 
@@ -65,13 +57,12 @@ def plot_displacements_y(numerical_file_path):
     x1 = sorted_by_x1['x1'].tolist()
     u1 = sorted_by_x1['u1'].tolist()
 
-    # Вычисление аналитического решения для перемещений
     u1analit = []
     for x in x1:
         u1analit.append(
             (-P / (4 * mu)) * (x + 2 * ((1 - nu) / (1 + nu)) * (a ** 2) / x + (a ** 4) / (x ** 3))
         )
-        # Построение графика
+       
     plt.figure(figsize=(10, 6))
     plt.minorticks_on()
     plt.grid(which='major')
@@ -88,7 +79,7 @@ def plot_displacements_y(numerical_file_path):
 
 def sort_numerical_data(file_path):
     data = np.loadtxt(file_path)
-    sorted_data = data[data[:, 1].argsort()]  # сортировка по y
+    sorted_data = data[data[:, 1].argsort()] 
     sorted_file_path = 'sorted_' + file_path
     np.savetxt(sorted_file_path, sorted_data, fmt='%.6e')
     return sorted_file_path
@@ -147,11 +138,9 @@ def plot_stress_down(numerical_file_path):
     sorted_file_path = sort_numerical_data(numerical_file_path)
     data = np.loadtxt(sorted_file_path)
 
-    # Извлекаем значения для x и напряжений
     x_values_numerical = data[:, 0]
     stresses_numerical = data[:, 1]
 
-    # Фильтруем данные, оставляя только те, где x >= 0.17
     mask = x_values_numerical >= 0.17
     x_values_numerical = x_values_numerical[mask]
     stresses_numerical = stresses_numerical[mask]
@@ -160,10 +149,8 @@ def plot_stress_down(numerical_file_path):
     x_values_numerical = x_values_numerical[unique_indices]
     stresses_numerical = stresses_numerical[unique_indices]
 
-    # Получаем аналитическое решение для напряжений
     stresses_analytical_x = kirsch_analytical_solution_x(x_values_numerical)
 
-    # Строим график
     plt.figure(figsize=(10, 6))
     plt.minorticks_on()
     plt.grid(which='major')
